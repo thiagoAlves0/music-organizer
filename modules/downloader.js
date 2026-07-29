@@ -12,10 +12,14 @@ class Downloader {
   static cleanUrl(url) {
     const trimmed = url.trim();
 
+    // 0. Já é uma busca ytsearch → retorna como está
+    if (trimmed.startsWith('ytsearch')) {
+      return trimmed;
+    }
+
     // 1. Detecta qualquer URL de playlist (com ou sem www, com &si= ou outros parâmetros)
     const playlistListMatch = trimmed.match(/youtube\.com\/playlist\?.*list=([a-zA-Z0-9_-]+)/);
     if (playlistListMatch) {
-      // Normaliza para formato canônico limpo (sem &si= e com www)
       return `https://www.youtube.com/playlist?list=${playlistListMatch[1]}`;
     }
 
@@ -36,6 +40,13 @@ class Downloader {
     const shortMatch = trimmed.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
     if (shortMatch) {
       return `https://www.youtube.com/watch?v=${shortMatch[1]}`;
+    }
+
+    // 4. Não é URL → tratar como busca por nome no YouTube
+    const isUrl = /^https?:\/\//i.test(trimmed) || /^www\./i.test(trimmed) || trimmed.includes('youtube.com');
+    if (!isUrl && trimmed.length > 0) {
+      console.log(`🔍 Busca por nome detectada: "${trimmed}"`);
+      return `ytsearch1:${trimmed}`;
     }
 
     return trimmed;
@@ -80,7 +91,7 @@ class Downloader {
   /**
    * Obtém metadados da playlist ou do vídeo de forma ultra-rápida (sem baixar os arquivos)
    */
-  static async getPlaylistInfo(source) {
+  static async getPlaylistInfo(source, signal = null) {
     const cleanSource = this.cleanUrl(source);
     const ytdlpPath = await this.getYtdlpPath();
     const args = [
@@ -91,7 +102,9 @@ class Downloader {
     ];
 
     console.log(`🔍 Obtendo metadados da fonte: ${cleanSource}`);
-    const proc = spawn(ytdlpPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const spawnOpts = { stdio: ['ignore', 'pipe', 'pipe'] };
+    if (signal) spawnOpts.signal = signal;
+    const proc = spawn(ytdlpPath, args, spawnOpts);
     let stdout = '';
     let stderr = '';
 
@@ -99,7 +112,12 @@ class Downloader {
     proc.stderr.on('data', (data) => { stderr += data.toString(); });
 
     await new Promise((resolve, reject) => {
-      proc.on('close', (code) => {
+      proc.on('close', (code, sig) => {
+        if (signal && signal.aborted) {
+          const err = new Error('Operação cancelada.');
+          err.name = 'AbortError';
+          return reject(err);
+        }
         if (code !== 0) {
           reject(new Error(`Falha ao obter info da playlist. Código ${code}.\n${stderr}`));
         } else {
@@ -107,7 +125,10 @@ class Downloader {
         }
       });
       proc.on('error', (err) => {
-        reject(new Error(`Erro ao executar yt-dlp: ${err.message}`));
+        if (err.code === 'ABORT_ERR' || (signal && signal.aborted)) {
+          err.name = 'AbortError';
+        }
+        reject(err);
       });
     });
 
@@ -142,14 +163,13 @@ class Downloader {
   /**
    * Baixa uma única música (ou vídeo)
    */
-  static async fetch(source, outputDir, options = {}) {
+  static async fetch(source, outputDir, options = {}, signal = null) {
     const cleanSource = this.cleanUrl(source);
     await fs.ensureDir(outputDir);
 
     const ytdlpPath = await this.getYtdlpPath();
     const ffmpegPath = await this.getFfmpegPath();
 
-    // Como processamos um por um, usamos um template simples baseado no título do vídeo
     const template = path.join(outputDir, '%(title)s.%(ext)s');
 
     const argsFinal = [
@@ -164,7 +184,7 @@ class Downloader {
       '--print', 'after_move:filepath',
       '--print', 'after_move:infojson',
       '--print', 'after_move:thumbpath',
-      '--no-playlist',       // Baixar apenas a música individual
+      '--no-playlist',
       '--no-warnings',
       '--no-progress',
       '--restrict-filenames'
@@ -176,7 +196,9 @@ class Downloader {
 
     console.log(`🎵 Baixando música: ${cleanSource}`);
 
-    const proc = spawn(ytdlpPath, argsFinal, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const spawnOpts = { stdio: ['ignore', 'pipe', 'pipe'] };
+    if (signal) spawnOpts.signal = signal;
+    const proc = spawn(ytdlpPath, argsFinal, spawnOpts);
     let stdout = '';
     let stderr = '';
 
@@ -192,6 +214,11 @@ class Downloader {
 
     await new Promise((resolve, reject) => {
       proc.on('close', (code) => {
+        if (signal && signal.aborted) {
+          const err = new Error('Operação cancelada.');
+          err.name = 'AbortError';
+          return reject(err);
+        }
         if (code !== 0) {
           reject(new Error(`yt-dlp falhou com código ${code}.\nDetalhes:\n${stderr}`));
         } else {
@@ -199,7 +226,10 @@ class Downloader {
         }
       });
       proc.on('error', (err) => {
-        reject(new Error(`Erro ao executar yt-dlp: ${err.message}`));
+        if (err.code === 'ABORT_ERR' || (signal && signal.aborted)) {
+          err.name = 'AbortError';
+        }
+        reject(err);
       });
     });
 

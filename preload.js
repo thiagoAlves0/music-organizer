@@ -8,4 +8,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onLog: (callback) => ipcRenderer.on("log", (event, msg) => callback(msg)),
   onProgress: (callback) => ipcRenderer.on("progress", (event, value) => callback(value)),
   onStatus: (callback) => ipcRenderer.on("status", (event, msg) => callback(msg)),
+  // Controles de processo
+  pauseProcess: () => ipcRenderer.send("pause-process"),
+  resumeProcess: () => ipcRenderer.send("resume-process"),
+  cancelProcess: () => ipcRenderer.send("cancel-process"),
 });

@@ -2,51 +2,84 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Auto Music Organizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div id="app">
-    <h1>🎵 Auto Music Organizer</h1>
 
-    <div id="statusBar">✔ Pronto</div>
+    <!-- Cabeçalho -->
+    <header class="app-header">
+      <h1>🎵 Auto Music <span>Organizer</span></h1>
+      <p>Prepare suas playlists para o carro em segundos</p>
+    </header>
 
-    <section>
-      <label>Fonte externa (URL do YouTube)</label>
-      <input type="text" id="sourceInput" placeholder="ex: https://youtube.com/playlist?list=..." />
-      
-      <label style="margin-top: 10px;">Nome da pasta/playlist <span style="opacity:0.5;">(opcional — deixe vazio para usar o nome da playlist do YouTube)</span></label>
-      <input type="text" id="customFolderInput" placeholder="ex: Flashback 80s, Viagem, Academia..." />
-      
-      <button id="importBtn">🎧 Importar do YouTube</button>
+    <!-- Barra de status -->
+    <div id="statusBar">✔ Pronto para começar</div>
+
+    <!-- Seção: Download do YouTube / Busca por Nome -->
+    <section class="card" id="importCard">
+      <span class="card-title">🎧 Importar do YouTube</span>
+
+      <div>
+        <label>
+          URL ou nome da música
+          <span class="hint"> — Cole links do YouTube ou digite nomes (um por linha)</span>
+        </label>
+        <textarea
+          id="sourceInput"
+          placeholder="https://youtube.com/playlist?list=...&#10;Queen - Bohemian Rhapsody&#10;Nirvana - Smells Like Teen Spirit"
+        ></textarea>
+      </div>
+
+      <div>
+        <label>
+          Nome da pasta / playlist
+          <span class="hint"> — Deixe vazio para usar o nome do YouTube</span>
+        </label>
+        <input type="text" id="customFolderInput" placeholder="ex: Flashback 80s, Viagem, Academia..." />
+      </div>
+
+      <button id="importBtn">⬇ Importar Músicas</button>
     </section>
 
-    <hr />
-
-    <section>
-      <label>Arquivos locais para organizar</label>
-      <button id="pickFilesBtn">📂 Selecionar arquivos de áudio</button>
-      <div id="selectedFiles">Nenhum arquivo selecionado.</div>
+    <!-- Seção: Destino -->
+    <section class="card">
+      <span class="card-title">📁 Pasta de Destino (Pendrive)</span>
+      <button id="pickDestBtn" class="btn-secondary">📁 Selecionar pasta de destino</button>
+      <div id="destPath" class="path-display">Nenhuma pasta selecionada.</div>
     </section>
 
-    <section>
-      <label>Pasta de destino (pendrive)</label>
-      <button id="pickDestBtn">📁 Selecionar pasta de destino</button>
-      <div id="destPath">Nenhuma pasta selecionada.</div>
+    <!-- Seção: Arquivos Locais -->
+    <section class="card">
+      <span class="card-title">💾 Arquivos Locais</span>
+      <button id="pickFilesBtn" class="btn-secondary">📂 Selecionar arquivos de áudio</button>
+      <div id="selectedFiles" class="path-display">Nenhum arquivo selecionado.</div>
+      <button id="organizeBtn">▶ Organizar Biblioteca Local</button>
     </section>
 
-    <button id="organizeBtn">▶ Organizar Biblioteca Local</button>
-
+    <!-- Progresso -->
     <div id="progressContainer">
       <progress id="progressBar" value="0" max="100"></progress>
       <span id="progressText">0%</span>
     </div>
 
-    <div id="logArea">
-      <p>✔ Pronto para começar.</p>
+    <!-- Controles de processo (visíveis apenas durante o download) -->
+    <div id="processControls" class="process-controls hidden">
+      <button id="pauseBtn" class="btn-pause">⏸ Pausar</button>
+      <button id="cancelBtn" class="btn-cancel">✕ Cancelar</button>
     </div>
-  </div>
 
+    <!-- Log -->
+    <div id="logArea">
+      <p class="log-info">✔ Pronto para começar.</p>
+    </div>
+
+  </div>
   <script src="renderer.js"></script>
 </body>
 </html>

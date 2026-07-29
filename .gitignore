@@ -1,0 +1,32 @@
+# Binários externos (baixar manualmente)
+yt-dlp.exe
+ffmpeg.exe
+ffprobe.exe
+
+# Dependências do Node
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Arquivos temporários
+*.tmp
+*.temp
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Variáveis de ambiente
+.env
+.env.local
+
+# Build do Electron
+dist/
+out/
+build/
+
+# Editor
+.vscode/
+.idea/

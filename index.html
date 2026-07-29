@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Auto Music Organizer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <h1>🎵 Auto Music Organizer</h1>
+
+    <div id="statusBar">✔ Pronto</div>
+
+    <section>
+      <label>Fonte externa (URL do YouTube)</label>
+      <input type="text" id="sourceInput" placeholder="ex: https://youtube.com/playlist?list=..." />
+      
+      <label style="margin-top: 10px;">Nome da pasta/playlist <span style="opacity:0.5;">(opcional — deixe vazio para usar o nome da playlist do YouTube)</span></label>
+      <input type="text" id="customFolderInput" placeholder="ex: Flashback 80s, Viagem, Academia..." />
+      
+      <button id="importBtn">🎧 Importar do YouTube</button>
+    </section>
+
+    <hr />
+
+    <section>
+      <label>Arquivos locais para organizar</label>
+      <button id="pickFilesBtn">📂 Selecionar arquivos de áudio</button>
+      <div id="selectedFiles">Nenhum arquivo selecionado.</div>
+    </section>
+
+    <section>
+      <label>Pasta de destino (pendrive)</label>
+      <button id="pickDestBtn">📁 Selecionar pasta de destino</button>
+      <div id="destPath">Nenhuma pasta selecionada.</div>
+    </section>
+
+    <button id="organizeBtn">▶ Organizar Biblioteca Local</button>
+
+    <div id="progressContainer">
+      <progress id="progressBar" value="0" max="100"></progress>
+      <span id="progressText">0%</span>
+    </div>
+
+    <div id="logArea">
+      <p>✔ Pronto para começar.</p>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

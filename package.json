@@ -1,0 +1,15 @@
+{
+  "name": "music-organizer",
+  "version": "0.1.0",
+  "description": "Auto Music Organizer para VW Play - MVP",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "^28.0.0",
+    "node-id3": "^0.2.6",
+    "axios": "^1.6.0",
+    "fs-extra": "^11.2.0"
+  }
+}

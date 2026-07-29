@@ -216,6 +216,121 @@ class Organizer {
       return { success: false, newPath, errors };
     }
   }
+
+  /**
+   * Renumera todos os arquivos de áudio de uma pasta, corrigindo
+   * duplicatas e lacunas na numeração. Não move arquivos para subpastas.
+   *
+   * @param {string} folderPath - caminho da pasta a renumerar
+   * @param {'name'|'date'} sortBy - critério de ordenação ('name' ou 'date')
+   * @returns {Promise<{success: boolean, renamed: number, errors: string[]}>}
+   */
+  static async renumberFolder(folderPath, sortBy = 'name') {
+    const errors = [];
+    let renamed = 0;
+
+    try {
+      const AUDIO_EXTS = /\.(mp3|m4a|wav|flac)$/i;
+      const safeName = (str) => str.replace(/[<>:"/\\|?*]/g, '').trim();
+
+      // 1. Listar apenas arquivos de áudio
+      const allFiles = await fs.readdir(folderPath);
+      let audioFiles = allFiles.filter(f => AUDIO_EXTS.test(f));
+
+      if (audioFiles.length === 0) {
+        return { success: true, renamed: 0, errors: ['Nenhum arquivo de áudio encontrado na pasta.'] };
+      }
+
+      // 2. Ordenar
+      if (sortBy === 'date') {
+        // Ordenar por data de modificação (mais antigo primeiro)
+        const filesWithStats = await Promise.all(
+          audioFiles.map(async (f) => {
+            const stat = await fs.stat(path.join(folderPath, f));
+            return { name: f, mtime: stat.mtimeMs };
+          })
+        );
+        filesWithStats.sort((a, b) => a.mtime - b.mtime);
+        audioFiles = filesWithStats.map(f => f.name);
+      } else {
+        // Ordenar por nome (alfabético, case-insensitive)
+        audioFiles.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+      }
+
+      // 3. Primeira passagem: renomear para nomes temporários para evitar colisões
+      const tempPrefix = `__renumber_tmp_${Date.now()}_`;
+      const tempNames = [];
+
+      for (let i = 0; i < audioFiles.length; i++) {
+        const oldPath = path.join(folderPath, audioFiles[i]);
+        const tempName = `${tempPrefix}${i}${path.extname(audioFiles[i])}`;
+        const tempPath = path.join(folderPath, tempName);
+        await fs.rename(oldPath, tempPath);
+        tempNames.push({ tempName, originalName: audioFiles[i] });
+      }
+
+      // 4. Segunda passagem: renomear do temporário para o nome final sequencial
+      for (let i = 0; i < tempNames.length; i++) {
+        const { tempName, originalName } = tempNames[i];
+        const tempPath = path.join(folderPath, tempName);
+        const ext = path.extname(originalName);
+        const baseName = path.basename(originalName, ext);
+
+        // Extrair artista e título do nome antigo
+        let artist = '';
+        let title = '';
+
+        // Padrão: "XX - Artista - Título" (com número no início)
+        const matchNumbered = baseName.match(/^\d+\s*[-–—]\s*(.+?)\s*[-–—]\s*(.+)$/);
+        // Padrão: "Artista - Título" (sem número)
+        const matchSimple = baseName.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+
+        if (matchNumbered && matchNumbered[1] && matchNumbered[2]) {
+          artist = matchNumbered[1].trim();
+          title = matchNumbered[2].trim();
+        } else if (matchSimple && matchSimple[1] && matchSimple[2]) {
+          artist = matchSimple[1].trim();
+          title = matchSimple[2].trim();
+        } else {
+          // Sem separador — usa o nome inteiro como título
+          artist = '';
+          title = baseName.replace(/^\d+\s*[-–—]?\s*/, '').trim() || baseName;
+        }
+
+        // Montar novo nome
+        const trackNum = String(i + 1).padStart(2, '0');
+        const safeArtist = safeName(artist);
+        const safeTitle = safeName(title) || 'Música';
+
+        let newFileName;
+        if (safeArtist) {
+          newFileName = `${trackNum} - ${safeArtist} - ${safeTitle}${ext}`;
+        } else {
+          newFileName = `${trackNum} - ${safeTitle}${ext}`;
+        }
+
+        const newPath = path.join(folderPath, newFileName);
+
+        try {
+          await fs.rename(tempPath, newPath);
+          renamed++;
+          console.log(`🔢 ${originalName} → ${newFileName}`);
+        } catch (renameErr) {
+          errors.push(`Erro ao renomear "${originalName}": ${renameErr.message}`);
+          // Tentar restaurar o nome original
+          try {
+            await fs.rename(tempPath, path.join(folderPath, originalName));
+          } catch (_) { /* silencioso */ }
+        }
+      }
+
+      return { success: errors.length === 0, renamed, errors };
+    } catch (err) {
+      console.error('❌ Erro na renumeração:', err);
+      errors.push(err.message);
+      return { success: false, renamed, errors };
+    }
+  }
 }
 
 module.exports = Organizer;

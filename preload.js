@@ -12,4 +12,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   pauseProcess: () => ipcRenderer.send("pause-process"),
   resumeProcess: () => ipcRenderer.send("resume-process"),
   cancelProcess: () => ipcRenderer.send("cancel-process"),
+  // Renumeração
+  renumberFolder: (folderPath) => ipcRenderer.invoke("renumber-folder", folderPath),
 });

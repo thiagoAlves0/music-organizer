@@ -330,6 +330,26 @@ class Downloader {
 
     return results;
   }
+
+  static extractArtistAndTitle(title) {
+    // Remove sujeiras comuns (parênteses, colchetes, palavras-chave)
+    const clean = title
+      .replace(/\[.*?\]|\(.*?\)/g, "")
+      .replace(/(oficial|official|video|clipe|lyric|audio|hq|hd|4k|remaster|remix|ao vivo|live|dvd|vol|parte)/gi, "")
+      .trim();
+    
+    // Tenta extrair "Artista - Música"
+    const match = clean.match(/^(.+?)\s*[-–]\s*(.+)$/);
+    if (match && match[1] && match[2]) {
+      return { 
+        artist: match[1].trim().replace(/\s+/g, ' '), 
+        track: match[2].trim().replace(/\s+/g, ' ')
+      };
+    }
+    
+    // Se não encontrar, usa o título inteiro como música
+    return { artist: "", track: clean };
+  }
 }
 
 module.exports = Downloader;

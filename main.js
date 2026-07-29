@@ -230,7 +230,42 @@ ipcMain.handle("import-from-source", async (event, source, destRoot, customFolde
                   await new Promise((r) => setTimeout(r, waitTime * 1000));
                   attempt++;
                 } else {
-                  throw fetchErr;
+                  const isUnavailable = fetchErr.message.includes('Video unavailable') ||
+                                        fetchErr.message.includes('blocked') ||
+                                        fetchErr.message.includes('account has been terminated') ||
+                                        fetchErr.message.includes('This video is not available') ||
+                                        fetchErr.message.includes('Sign in to confirm your age') ||
+                                        fetchErr.message.includes('removed for violating') ||
+                                        fetchErr.message.includes('Private video') ||
+                                        fetchErr.message.includes('has been removed');
+
+                  if (isUnavailable) {
+                    logger.info(`[${indexStr}] 🔍 Fallback: buscando "${entry.title}" no YouTube...`);
+                    const { artist, track } = Downloader.extractArtistAndTitle(entry.title);
+                    const searchQuery = track || entry.title;
+                    
+                    try {
+                      const searchUrl = `ytsearch1:"${searchQuery}"`;
+                      items = await Downloader.fetch(
+                        searchUrl, 
+                        tempDir,
+                        { playlistTitle: playlistInfo.title, playlistIndex: entry.index },
+                        processState.abortController.signal
+                      );
+                      logger.info(`[${indexStr}] ✅ Fallback encontrado: ${items[0].metadata.title}`);
+                      
+                      if (items && items.length > 0) {
+                        items[0].metadata.fallbackTitle = entry.title;
+                        items[0].metadata.originalUrl = entry.url;
+                      }
+                      break;
+                    } catch (fallbackError) {
+                      logger.warn(`[${indexStr}] ❌ Fallback falhou para "${entry.title}": ${fallbackError.message}`);
+                      throw fallbackError;
+                    }
+                  } else {
+                    throw fetchErr;
+                  }
                 }
               }
             }
@@ -296,5 +331,25 @@ ipcMain.handle("import-from-source", async (event, source, destRoot, customFolde
       logger.error(err.message);
     }
     throw err;
+  }
+});
+
+// ── Renumerar pasta (apenas renomear, sem mover) ──────────────────────────────
+ipcMain.handle("renumber-folder", async (event, folderPath) => {
+  const logger = new Logger((msg) => send("log", msg));
+  try {
+    logger.info(`🔢 Renumerando arquivos em: ${folderPath}`);
+    const result = await Organizer.renumberFolder(folderPath);
+    if (result.success) {
+      logger.success(`✅ ${result.renamed} arquivo(s) renumerado(s) com sucesso.`);
+    } else {
+      result.errors.forEach(e => logger.error(`❌ ${e}`));
+    }
+    sendStatus(result.success ? "✅ Renumeração concluída!" : "⚠️ Renumeração com erros.");
+    return result;
+  } catch (err) {
+    logger.error(`❌ Erro: ${err.message}`);
+    sendStatus("❌ Erro na renumeração!");
+    return { success: false, renamed: 0, errors: [err.message] };
   }
 });

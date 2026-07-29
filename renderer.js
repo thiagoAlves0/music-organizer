@@ -9,6 +9,7 @@ const {
   pauseProcess,
   resumeProcess,
   cancelProcess,
+  renumberFolder,
 } = window.electronAPI;
 
 const logArea = document.getElementById("logArea");
@@ -178,5 +179,26 @@ document.getElementById("importBtn").addEventListener("click", async () => {
     }
   } finally {
     hideProcessControls();
+  }
+});
+
+// ── Renumerar pasta ───────────────────────────────────────────────────────────
+document.getElementById("renumberBtn").addEventListener("click", async () => {
+  const folderPath = await selectFolder();
+  if (!folderPath) return;
+
+  appendLog(`⏳ Renumerando arquivos em: ${folderPath}...`);
+  setProgress(0);
+
+  try {
+    const result = await renumberFolder(folderPath);
+    setProgress(100);
+    if (result.success) {
+      appendLog(`✅ ${result.renamed} arquivo(s) renumerado(s) com sucesso.`);
+    } else {
+      appendLog(`⚠️ ${result.renamed} renumerado(s), mas com erros: ${result.errors.join(", ")}`);
+    }
+  } catch (err) {
+    appendLog(`❌ Falha: ${err.message}`);
   }
 });

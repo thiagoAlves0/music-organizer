@@ -26,25 +26,54 @@
       <span class="card-title">🎧 Importar do YouTube</span>
 
       <div>
-        <label>
-          URL ou nome da música
-          <span class="hint"> — Cole links do YouTube ou digite nomes (um por linha)</span>
-        </label>
+        <div class="label-row">
+          <label for="sourceInput">
+            URL ou nome da música
+            <span class="hint"> — Cole links do YouTube ou nomes (um por linha)</span>
+          </label>
+          <span id="lineCounter" class="line-counter hidden">0 itens</span>
+        </div>
         <textarea
           id="sourceInput"
           placeholder="https://youtube.com/playlist?list=...&#10;Queen - Bohemian Rhapsody&#10;Nirvana - Smells Like Teen Spirit"
         ></textarea>
+        <!-- Pré-visualização da URL detectada -->
+        <div id="urlPreview" class="url-preview hidden"></div>
+        <div id="sourceError" class="field-error hidden">⚠ Informe a URL ou nome da música.</div>
+      </div>
+
+      <div class="flex-row">
+        <div style="flex: 1;">
+          <label for="formatSelect">Formato</label>
+          <select id="formatSelect">
+            <option value="mp3">🎵 Áudio (MP3)</option>
+            <option value="mp4">🎬 Vídeo (MP4)</option>
+          </select>
+        </div>
+        <div style="flex: 1;">
+          <label for="qualitySelect">
+            Qualidade
+            <span id="qualityDetecting" class="detecting-badge hidden">🔍 detectando...</span>
+          </label>
+          <select id="qualitySelect">
+            <!-- Populado dinamicamente via JS -->
+          </select>
+        </div>
       </div>
 
       <div>
-        <label>
+        <label for="customFolderInput">
           Nome da pasta / playlist
           <span class="hint"> — Deixe vazio para usar o nome do YouTube</span>
         </label>
-        <input type="text" id="customFolderInput" placeholder="ex: Flashback 80s, Viagem, Academia..." />
+        <div class="input-with-clear">
+          <input type="text" id="customFolderInput" placeholder="ex: Flashback 80s, Viagem, Academia..." />
+          <button type="button" id="clearFolderBtn" class="btn-clear-field" title="Limpar campo" tabindex="-1">✕</button>
+        </div>
       </div>
 
-      <button id="importBtn">⬇ Importar Músicas</button>
+      <button id="importBtn" disabled>⬇ Importar Músicas</button>
+      <div id="destError" class="field-error hidden">⚠ Selecione a pasta de destino antes de importar.</div>
     </section>
 
     <!-- Seção: Destino -->
@@ -82,6 +111,10 @@
     </div>
 
     <!-- Log -->
+    <div id="logHeader" class="log-header">
+      <span class="card-title" style="margin: 0;">📋 Log</span>
+      <button type="button" id="clearLogBtn" class="btn-clear-log">🗑 Limpar</button>
+    </div>
     <div id="logArea">
       <p class="log-info">✔ Pronto para começar.</p>
     </div>

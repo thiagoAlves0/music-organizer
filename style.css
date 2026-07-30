@@ -106,8 +106,9 @@ label span.hint {
   opacity: 0.6;
 }
 
-/* ---- Inputs & Textareas ---- */
+/* ---- Inputs, Textareas & Selects ---- */
 input[type="text"],
+select,
 textarea {
   width: 100%;
   background: var(--surface-2);
@@ -122,14 +123,155 @@ textarea {
   resize: vertical;
 }
 input[type="text"]:focus,
+select:focus,
 textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(108,99,255,0.15);
 }
 textarea {
-  min-height: 88px;
+  min-height: 120px;
   line-height: 1.5;
 }
+
+/* ---- Label row (with counter) ---- */
+.label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.label-row label { margin-bottom: 0; }
+.line-counter {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(108,99,255,0.1);
+  border: 1px solid rgba(108,99,255,0.25);
+  border-radius: 20px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+/* ---- URL preview ---- */
+.url-preview {
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: rgba(52,201,122,0.07);
+  border: 1px solid rgba(52,201,122,0.25);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--green);
+  line-height: 1.5;
+  animation: fadeIn 0.2s ease;
+}
+
+/* ---- Field error ---- */
+.field-error {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--red);
+  animation: fadeIn 0.15s ease;
+}
+
+/* ---- Detecting badge ---- */
+.detecting-badge {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--blue);
+  background: rgba(79,195,247,0.1);
+  border: 1px solid rgba(79,195,247,0.2);
+  border-radius: 20px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  vertical-align: middle;
+  animation: pulse 1.2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+.detecting-badge.detected {
+  color: var(--green);
+  background: rgba(52,201,122,0.12);
+  border-color: rgba(52,201,122,0.3);
+  animation: none;
+}
+
+/* ---- Input with clear button ---- */
+.input-with-clear {
+  position: relative;
+  display: flex;
+}
+.input-with-clear input {
+  flex: 1;
+  padding-right: 34px;
+}
+.btn-clear-field {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  min-width: unset;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.input-with-clear:focus-within .btn-clear-field,
+.input-with-clear input:not(:placeholder-shown) + .btn-clear-field {
+  opacity: 1;
+}
+.btn-clear-field:hover { background: var(--border); color: var(--text); }
+
+/* ---- Import button disabled state ---- */
+#importBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ---- Log header ---- */
+.log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+.btn-clear-log {
+  width: auto;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.btn-clear-log:hover { background: var(--surface-2); color: var(--text); }
+
+/* ---- Animations ---- */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.flex-row {
+  display: flex;
+  gap: 12px;
+}
+
 
 /* ---- Buttons ---- */
 button {
@@ -256,8 +398,9 @@ progress::-moz-progress-bar      { background: var(--accent);    border-radius: 
   display: flex;
   gap: 10px;
 }
-.process-controls.hidden {
-  display: none;
+.process-controls.hidden,
+.hidden {
+  display: none !important;
 }
 
 .btn-pause {

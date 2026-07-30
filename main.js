@@ -139,8 +139,18 @@ ipcMain.handle("organize-files", async (event, filePaths, destRoot) => {
   return results;
 });
 
+// ── Detectar formatos disponíveis (sem baixar) ────────────────────────────────
+ipcMain.handle("get-available-formats", async (event, url) => {
+  try {
+    return await Downloader.getAvailableFormats(url);
+  } catch (err) {
+    console.warn("⚠️ Falha ao detectar formatos:", err.message);
+    return { resolutions: [], title: null };
+  }
+});
+
 // ── Importar do YouTube / Busca por nome ─────────────────────────────────────
-ipcMain.handle("import-from-source", async (event, source, destRoot, customFolder) => {
+ipcMain.handle("import-from-source", async (event, source, destRoot, customFolder, downloadOpts) => {
   resetProcessState();
   const logger = new Logger((msg) => send("log", msg));
 
@@ -216,7 +226,7 @@ ipcMain.handle("import-from-source", async (event, source, destRoot, customFolde
                 items = await Downloader.fetch(
                   entry.url,
                   tempDir,
-                  { playlistTitle: playlistInfo.title, playlistIndex: entry.index },
+                  { playlistTitle: playlistInfo.title, playlistIndex: entry.index, downloadOpts },
                   processState.abortController.signal
                 );
                 break;
@@ -249,7 +259,7 @@ ipcMain.handle("import-from-source", async (event, source, destRoot, customFolde
                       items = await Downloader.fetch(
                         searchUrl, 
                         tempDir,
-                        { playlistTitle: playlistInfo.title, playlistIndex: entry.index },
+                        { playlistTitle: playlistInfo.title, playlistIndex: entry.index, downloadOpts },
                         processState.abortController.signal
                       );
                       logger.info(`[${indexStr}] ✅ Fallback encontrado: ${items[0].metadata.title}`);
@@ -280,7 +290,8 @@ ipcMain.handle("import-from-source", async (event, source, destRoot, customFolde
                 destRoot,
                 item.metadata,
                 item.thumbnailPath,
-                customFolder || ""
+                customFolder || "",
+                downloadOpts
               );
 
               allResults.push(result);

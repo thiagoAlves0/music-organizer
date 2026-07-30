@@ -9,7 +9,13 @@ class Organizer {
     let newPath = null;
 
     try {
-      let tags = Tagger.readTags(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      const isMp3 = ext === '.mp3';
+
+      let tags = {};
+      if (isMp3) {
+        tags = Tagger.readTags(filePath);
+      }
 
       tags.title = tags.title || fallbackMetadata.title || "";
       tags.artist = tags.artist || fallbackMetadata.artist || "";
@@ -98,7 +104,7 @@ class Organizer {
       let trackNumber = "01";
       try {
         const files = await fs.readdir(destDir);
-        const audioFiles = files.filter(f => f.match(/\.(mp3|m4a|wav|flac)$/i));
+        const audioFiles = files.filter(f => f.match(/\.(mp3|m4a|wav|flac|mp4)$/i));
 
         const existingNumbers = audioFiles
           .map(f => {
@@ -124,39 +130,40 @@ class Organizer {
         console.log(`🔢 Auto‑numeração: usando 01 (pasta vazia ou erro)`);
       }
 
-      // Buscar capa
+      // Buscar capa (Apenas para MP3)
       let coverPath = null;
 
-      if (thumbnailPath && await fs.pathExists(thumbnailPath)) {
-        console.log(`🖼️ Usando thumbnail do YouTube como capa`);
-        const thumbExt = path.extname(thumbnailPath) || '.jpg';
-        coverPath = path.join(destDir, `cover${thumbExt}`);
-        await fs.copy(thumbnailPath, coverPath);
-        console.log(`✅ Capa salva de thumbnail`);
-      } else {
-        if (artist !== "Vários Artistas" && title !== "Álbum Desconhecido") {
-          console.log(`🔍 Buscando capa por artista + música: ${artist} - ${title}`);
-          coverPath = await CoverDownloader.fetchCoverByTrack(artist, title, destDir);
+      if (isMp3) {
+        if (thumbnailPath && await fs.pathExists(thumbnailPath)) {
+          console.log(`🖼️ Usando thumbnail do YouTube como capa`);
+          const thumbExt = path.extname(thumbnailPath) || '.jpg';
+          coverPath = path.join(destDir, `cover${thumbExt}`);
+          await fs.copy(thumbnailPath, coverPath);
+          console.log(`✅ Capa salva de thumbnail`);
+        } else {
+          if (artist !== "Vários Artistas" && title !== "Álbum Desconhecido") {
+            console.log(`🔍 Buscando capa por artista + música: ${artist} - ${title}`);
+            coverPath = await CoverDownloader.fetchCoverByTrack(artist, title, destDir);
+          }
+          if (!coverPath && artist !== "Vários Artistas" && album !== "Álbum Desconhecido") {
+            console.log(`🔍 Buscando capa por artista + álbum: ${artist} - ${album}`);
+            coverPath = await CoverDownloader.fetchCover(artist, album, null, destDir);
+          }
         }
-        if (!coverPath && artist !== "Vários Artistas" && album !== "Álbum Desconhecido") {
-          console.log(`🔍 Buscando capa por artista + álbum: ${artist} - ${album}`);
-          coverPath = await CoverDownloader.fetchCover(artist, album, null, destDir);
+
+        if (coverPath && (await fs.pathExists(coverPath))) {
+          console.log(`💿 Inserindo capa no MP3...`);
+          const result = Tagger.writeCover(filePath, coverPath);
+          console.log(`✅ Capa inserida: ${result}`);
+        } else {
+          console.log(`⚠️ Nenhuma capa disponível.`);
         }
+
+        tags.track = trackNumber;
+        console.log(`✏️ Escrevendo tags...`);
+        Tagger.writeTags(filePath, tags);
       }
 
-      if (coverPath && (await fs.pathExists(coverPath))) {
-        console.log(`💿 Inserindo capa no MP3...`);
-        const result = Tagger.writeCover(filePath, coverPath);
-        console.log(`✅ Capa inserida: ${result}`);
-      } else {
-        console.log(`⚠️ Nenhuma capa disponível.`);
-      }
-
-      tags.track = trackNumber;
-      console.log(`✏️ Escrevendo tags...`);
-      Tagger.writeTags(filePath, tags);
-
-      const ext = path.extname(filePath);
       const safeArtistName = artist.replace(/[<>:"/\\|?*]/g, '').trim();
       const safeTitle = title.replace(/[<>:"/\\|?*]/g, '').trim() || "Música";
       const newFileName = `${trackNumber} - ${safeArtistName} - ${safeTitle}${ext}`;
@@ -189,7 +196,7 @@ class Organizer {
     let renamed = 0;
 
     try {
-      const AUDIO_EXTS = /\.(mp3|m4a|wav|flac)$/i;
+      const AUDIO_EXTS = /\.(mp3|m4a|wav|flac|mp4)$/i;
       const safeName = (str) => str.replace(/[<>:"/\\|?*]/g, '').trim();
 
       if (!await fs.pathExists(folderPath)) {

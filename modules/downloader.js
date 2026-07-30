@@ -161,6 +161,85 @@ class Downloader {
   }
 
   /**
+   * Detecta as resoluções/formatos disponíveis para uma URL sem baixar o arquivo.
+   * Para playlists, analisa apenas o primeiro vídeo como amostra.
+   * Tem timeout de 8s para não travar a UI.
+   *
+   * @param {string} url - URL do YouTube (vídeo ou playlist)
+   * @returns {Promise<{resolutions: number[], audioOnly: boolean}>}
+   */
+  static async getAvailableFormats(url) {
+    const cleanSource = this.cleanUrl(url);
+    const ytdlpPath = await this.getYtdlpPath();
+
+    // Para playlists, amostra apenas o primeiro item
+    const args = [
+      cleanSource,
+      '--dump-json',
+      '--no-download',
+      '--no-warnings',
+      '--playlist-items', '1'
+    ];
+
+    console.log(`🔍 Detectando formatos disponíveis para: ${cleanSource}`);
+
+    const proc = spawn(ytdlpPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+
+    proc.stdout.on('data', (d) => { stdout += d.toString(); });
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+
+    // Race entre o processo e um timeout de 8s
+    const result = await Promise.race([
+      new Promise((resolve, reject) => {
+        proc.on('close', (code) => {
+          if (code !== 0) {
+            reject(new Error(`yt-dlp retornou código ${code}`));
+          } else {
+            resolve(stdout);
+          }
+        });
+        proc.on('error', reject);
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => {
+          try { proc.kill(); } catch (_) {}
+          reject(new Error('Timeout ao detectar formatos (20s)'));
+        }, 20000)
+      )
+    ]);
+
+    try {
+      // dump-json pode retornar múltiplas linhas (uma por vídeo); pega a primeira
+      const firstLine = result.trim().split('\n')[0];
+      const info = JSON.parse(firstLine);
+
+      const formats = info.formats || [];
+      const resolutionSet = new Set();
+
+      for (const f of formats) {
+        if (f.height && f.height >= 144 && f.vcodec !== 'none') {
+          // Normaliza para as resoluções padrão mais próximas
+          const h = f.height;
+          if (h >= 2000) resolutionSet.add(2160);
+          else if (h >= 1350) resolutionSet.add(1440);
+          else if (h >= 900)  resolutionSet.add(1080);
+          else if (h >= 600)  resolutionSet.add(720);
+          else if (h >= 400)  resolutionSet.add(480);
+          else if (h >= 250)  resolutionSet.add(360);
+          else                resolutionSet.add(240);
+        }
+      }
+
+      const resolutions = [...resolutionSet].sort((a, b) => b - a);
+      return { resolutions, title: info.title || null, playlistCount: null };
+    } catch (e) {
+      throw new Error(`Falha ao processar formatos: ${e.message}`);
+    }
+  }
+
+  /**
    * Baixa uma única música (ou vídeo)
    */
   static async fetch(source, outputDir, options = {}, signal = null) {
@@ -172,29 +251,50 @@ class Downloader {
 
     const template = path.join(outputDir, '%(title)s.%(ext)s');
 
+    const downloadOpts = options.downloadOpts || { format: 'mp3', quality: '320' };
+    const format = downloadOpts.format || 'mp3';
+    const quality = downloadOpts.quality || (format === 'mp3' ? '320' : '1080');
+
     const argsFinal = [
       cleanSource,
-      '--extract-audio',
-      '--audio-format', 'mp3',
-      '--audio-quality', '0',
       '--output', template,
       '--write-info-json',
-      '--write-thumbnail',
-      '--convert-thumbnails', 'jpg',
-      '--print', 'after_move:filepath',
-      '--print', 'after_move:infojson',
-      '--print', 'after_move:thumbpath',
       '--no-playlist',
       '--no-warnings',
       '--no-progress',
       '--restrict-filenames'
     ];
 
+    if (format === 'mp3') {
+      // Mapeia bitrate para VBR do yt-dlp: 0 = melhor qualidade, 9 = pior
+      const vbrMap = { '320': '0', '256': '3', '128': '7' };
+      const vbrQuality = vbrMap[quality] || '0';
+      argsFinal.push(
+        '--extract-audio',
+        '--audio-format', 'mp3',
+        '--audio-quality', vbrQuality,
+        '--write-thumbnail',
+        '--convert-thumbnails', 'jpg',
+        '--print', 'after_move:filepath',
+        '--print', 'after_move:infojson',
+        '--print', 'after_move:thumbpath'
+      );
+    } else {
+      // MP4 Video
+      const formatStr = `bestvideo[height<=?${quality}]+bestaudio/best[height<=?${quality}]/best`;
+      argsFinal.push(
+        '--format', formatStr,
+        '--merge-output-format', 'mp4',
+        '--print', 'after_move:filepath',
+        '--print', 'after_move:infojson'
+      );
+    }
+
     if (ffmpegPath) {
       argsFinal.push('--ffmpeg-location', ffmpegPath);
     }
 
-    console.log(`🎵 Baixando música: ${cleanSource}`);
+    console.log(`🎵 Baixando em formato ${format.toUpperCase()} (${quality}): ${cleanSource}`);
 
     const spawnOpts = { stdio: ['ignore', 'pipe', 'pipe'] };
     if (signal) spawnOpts.signal = signal;
@@ -240,31 +340,33 @@ class Downloader {
       throw new Error('Nenhum arquivo foi baixado.');
     }
 
-    let mp3 = lines.find(l => l.toLowerCase().endsWith('.mp3'))?.trim();
+    let downloadedFile = lines.find(l => l.toLowerCase().endsWith(`.${format}`))?.trim();
 
-    if (!mp3) {
-      // Se não encontrou no stdout, tenta encontrar qualquer arquivo .mp3 na pasta temporária
+    if (!downloadedFile) {
+      // Se não encontrou no stdout, tenta encontrar qualquer arquivo com a extensão correspondente na pasta temporária
       const files = await fs.readdir(outputDir);
-      const mp3Files = files.filter(f => f.toLowerCase().endsWith('.mp3'));
-      if (mp3Files.length > 0) {
-        mp3 = path.join(outputDir, mp3Files[0]);
+      const matchedFiles = files.filter(f => f.toLowerCase().endsWith(`.${format}`));
+      if (matchedFiles.length > 0) {
+        downloadedFile = path.join(outputDir, matchedFiles[0]);
       } else {
-        throw new Error('Nenhum arquivo MP3 encontrado na pasta temporária.');
+        throw new Error(`Nenhum arquivo ${format.toUpperCase()} encontrado na pasta temporária.`);
       }
     }
 
-    // 🔥 Reconstrói de forma garantida os caminhos do JSON e da Thumbnail baseado no MP3 gerado
-    const mp3Parsed = path.parse(mp3);
-    const jsonFile = path.join(mp3Parsed.dir, mp3Parsed.name + '.info.json');
+    // 🔥 Reconstrói de forma garantida os caminhos do JSON e da Thumbnail baseado no arquivo gerado
+    const fileParsed = path.parse(downloadedFile);
+    const jsonFile = path.join(fileParsed.dir, fileParsed.name + '.info.json');
     
-    // Procura por qualquer extensão de imagem suportada correspondente ao nome do MP3
-    const thumbExtensions = ['.jpg', '.jpeg', '.webp', '.png'];
     let thumb = null;
-    for (const ext of thumbExtensions) {
-      const checkPath = path.join(mp3Parsed.dir, mp3Parsed.name + ext);
-      if (await fs.pathExists(checkPath)) {
-        thumb = checkPath;
-        break;
+    if (format === 'mp3') {
+      // Procura por qualquer extensão de imagem suportada correspondente ao nome do MP3
+      const thumbExtensions = ['.jpg', '.jpeg', '.webp', '.png'];
+      for (const ext of thumbExtensions) {
+        const checkPath = path.join(fileParsed.dir, fileParsed.name + ext);
+        if (await fs.pathExists(checkPath)) {
+          thumb = checkPath;
+          break;
+        }
       }
     }
 
@@ -293,37 +395,38 @@ class Downloader {
     }
 
     if (!metadata.title) {
-      metadata.title = path.basename(mp3, '.mp3');
+      metadata.title = path.basename(downloadedFile, `.${format}`);
     }
 
     let thumbnailPath = null;
-    if (thumb && await fs.pathExists(thumb)) {
-      thumbnailPath = thumb;
-    } else {
-      const mp3Parsed = path.parse(mp3);
-      const thumbParsed = thumb ? path.parse(thumb) : mp3Parsed;
-      
-      const possibleThumbnails = [
-        path.join(thumbParsed.dir, thumbParsed.name + '.jpg'),
-        path.join(mp3Parsed.dir, mp3Parsed.name + '.jpg'),
-        path.join(thumbParsed.dir, thumbParsed.name + '.jpeg'),
-        path.join(mp3Parsed.dir, mp3Parsed.name + '.jpeg'),
-        path.join(thumbParsed.dir, thumbParsed.name + '.webp'),
-        path.join(mp3Parsed.dir, mp3Parsed.name + '.webp'),
-        path.join(thumbParsed.dir, thumbParsed.name + '.png'),
-        path.join(mp3Parsed.dir, mp3Parsed.name + '.png')
-      ];
+    if (format === 'mp3') {
+      if (thumb && await fs.pathExists(thumb)) {
+        thumbnailPath = thumb;
+      } else {
+        const thumbParsed = thumb ? path.parse(thumb) : fileParsed;
+        
+        const possibleThumbnails = [
+          path.join(thumbParsed.dir, thumbParsed.name + '.jpg'),
+          path.join(fileParsed.dir, fileParsed.name + '.jpg'),
+          path.join(thumbParsed.dir, thumbParsed.name + '.jpeg'),
+          path.join(fileParsed.dir, fileParsed.name + '.jpeg'),
+          path.join(thumbParsed.dir, thumbParsed.name + '.webp'),
+          path.join(fileParsed.dir, fileParsed.name + '.webp'),
+          path.join(thumbParsed.dir, thumbParsed.name + '.png'),
+          path.join(fileParsed.dir, fileParsed.name + '.png')
+        ];
 
-      for (const possible of possibleThumbnails) {
-        if (await fs.pathExists(possible)) {
-          thumbnailPath = possible;
-          break;
+        for (const possible of possibleThumbnails) {
+          if (await fs.pathExists(possible)) {
+            thumbnailPath = possible;
+            break;
+          }
         }
       }
     }
 
     results.push({
-      filePath: mp3,
+      filePath: downloadedFile,
       thumbnailPath: thumbnailPath,
       metadata: metadata,
     });

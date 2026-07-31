@@ -1,6 +1,6 @@
 # Auto Music Organizer — Relatório de Status e Handoff (Antigravity)
-**Versão Atual:** 0.3.0
-**Data:** 29/07/2026
+**Versão Atual:** 0.3.2
+**Data:** 30/07/2026
 
 Este documento contém o estado atualizado do projeto, detalhando a arquitetura, as funcionalidades implementadas recentemente e os próximos passos. Ele foi estruturado para fornecer contexto completo para o Antigravity IDE continuar o desenvolvimento.
 
@@ -24,8 +24,9 @@ music-organizer/
     ├── downloader.js          # Wrapper do yt-dlp (download, metadados, suporte a ytsearch1:)
     ├── organizer.js           # Renomeação, pastas planas, numeração de faixas e ID3 tags
     ├── tagger.js              # Manipulação de tags ID3 (node-id3)
-    ├── cover.js               # Download de capas (Thumbnail > iTunes > Deezer)
-    └── logger.js              # Utilitário de logging para terminal e interface
+    ├── cover.js               # Download de capas (Thumbnail > iTunes)
+    ├── logger.js              # Utilitário de logging para terminal e interface
+    └── utils.js               # Extração de artista/título e limpeza de tags
 ```
 
 ---
@@ -61,21 +62,27 @@ Foi implementado um controle robusto de fluxo utilizando recursos nativos do Nod
 - **Auto-numeração Inteligente**: Lê os arquivos da pasta e preenche lacunas numéricas (ex: se existe 01, 02 e 04, a próxima será 03).
 - **Tratamento de Rate Limit (403)**: O `main.js` faz retry com recuo exponencial (espera 8s, 16s, etc.) quando o YouTube bloqueia temporariamente.
 - **Limpeza**: Deleta MP3 temporário, JSON e cover.jpg após o processamento.
-- **Capas (Covers)**: Tenta usar a thumbnail do vídeo, fazendo fallback para as APIs do iTunes ou Deezer.
+- **Capas (Covers)**: Tenta usar a thumbnail do vídeo, fazendo fallback para a API do iTunes.
+
+### E. Progresso e UX (v0.3.2)
+- Contador de progresso baseado em **sucessos reais** (`concluídos/total/falhas`), não apenas índice do loop.
+- Aviso na UI e no log para URLs de **playlist dinâmica** (`start_radio=1`, listas `RD...`).
+- Botões desabilitados durante import/organize para evitar duplo clique.
+- `Logger.warn()` implementado (corrige crash no fallback de download).
+- Extração de artista/título centralizada em `modules/utils.js`.
+- Seleção MP3/MP4 já disponível na interface.
 
 ---
 
 ## 5. Próximos Passos (Roadmap Pendente)
 
-Os próximos itens a serem desenvolvidos, conforme as prioridades do projeto:
+1. **Concorrência limitada para downloads [Baixa Prioridade]**
+   - Baixar 2–3 músicas em paralelo com contador sincronizado.
 
-1. **Seleção de Formato (MP3 vs MP4) [Alta Prioridade]**
-   - **Objetivo**: Permitir baixar vídeos além de áudio.
-   - **O que fazer**: Adicionar um dropdown/radio button no `index.html`. Adaptar o `downloader.js` para baixar `mp4` quando selecionado (removendo as flags de `--extract-audio`). Atualizar o `organizer.js` para pular a escrita de tags ID3 se o arquivo for de vídeo.
+2. **Arquivo .m3u para o Carro [Média Prioridade]**
+   - Gerar playlist `.m3u` na raiz do pendrive.
 
-2. **Geração de Playlist por IA [Média Prioridade]**
-   - **Objetivo**: O usuário digita "Clássicos do rock 80s" e a IA (Gemini/OpenAI) gera uma lista de músicas que é automaticamente enviada para a busca em lote (`ytsearch1:`).
-   - **O que fazer**: Adicionar campo para chave de API e interface de chat/prompt.
+3. **Encoding UTF-8 no terminal Windows [Média Prioridade]**
+   - Corrigir acentos corrompidos nos logs do console.
 
-3. **Arquivo .m3u para o Carro [Média Prioridade]**
-   - **Objetivo**: Gerar uma lista de reprodução `.m3u` na pasta raiz do pendrive para facilitar a navegação no sistema do carro.
+**Descartado:** Integração Spotify, geração de playlist por IA.

@@ -87,6 +87,10 @@ function sendStatus(msg) {
   if (mainWindow) mainWindow.webContents.send("status", msg);
 }
 
+function sendProgress({ percent, completed, total, failed }) {
+  send("progress", { percent, completed, total, failed });
+}
+
 // ── Selecionar pasta ──────────────────────────────────────────────────────────
 ipcMain.handle("select-folder", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -112,6 +116,8 @@ ipcMain.handle("organize-files", async (event, filePaths, destRoot) => {
   const logger = new Logger((msg) => send("log", msg));
   const results = [];
   const total = filePaths.length;
+  let completedCount = 0;
+  let failedCount = 0;
 
   for (let i = 0; i < total; i++) {
     // Pausa
@@ -127,16 +133,42 @@ ipcMain.handle("organize-files", async (event, filePaths, destRoot) => {
     logger.info(`Processando: ${path.basename(filePath)}`);
     const result = await Organizer.organize(filePath, destRoot);
     results.push(result);
-    send("progress", Math.round(((i + 1) / total) * 100));
     if (result.success) {
+      completedCount++;
       logger.success(`Organizado em: ${result.newPath}`);
     } else {
+      failedCount++;
       logger.error(`Erro em ${path.basename(filePath)}: ${result.errors.join(", ")}`);
     }
+    sendProgress({
+      percent: Math.round(((completedCount + failedCount) / total) * 100),
+      completed: completedCount,
+      total,
+      failed: failedCount,
+    });
   }
 
-  sendStatus(processState.isCancelled ? "✕ Cancelado." : "✅ Finalizado!");
+  sendStatus(
+    processState.isCancelled
+      ? `✕ Cancelado — ${completedCount}/${total} concluído(s).`
+      : `✅ Finalizado — ${completedCount}/${total} concluído(s)${failedCount ? `, ${failedCount} falha(s)` : ""}.`
+  );
+  sendProgress({
+    percent: 100,
+    completed: completedCount,
+    total,
+    failed: failedCount,
+  });
   return results;
+});
+
+// ── Detectar URLs de playlist dinâmica (Mix/Rádio) ───────────────────────────
+ipcMain.handle("check-dynamic-playlists", (event, source) => {
+  if (!source || !source.trim()) return [];
+  return source
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && Downloader.isDynamicPlaylistUrl(l));
 });
 
 // ── Detectar formatos disponíveis (sem baixar) ────────────────────────────────
@@ -165,6 +197,19 @@ ipcMain.handle("import-from-source", async (event, source, destRoot, customFolde
     const lines = source.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
     const allResults = [];
     const tempDir = app.getPath("temp");
+    let grandTotal = 0;
+    let completedCount = 0;
+    let failedCount = 0;
+
+    const reportProgress = () => {
+      const processed = completedCount + failedCount;
+      sendProgress({
+        percent: grandTotal > 0 ? Math.round((processed / grandTotal) * 100) : 0,
+        completed: completedCount,
+        total: grandTotal,
+        failed: failedCount,
+      });
+    };
 
     for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
       // Pausa entre músicas
@@ -186,6 +231,11 @@ ipcMain.handle("import-from-source", async (event, source, destRoot, customFolde
         logger.info(`🔍 Buscando no YouTube: "${lineSource}"`);
       } else {
         logger.info(`🔗 Processando link: ${lineSource}`);
+        if (Downloader.isDynamicPlaylistUrl(lineSource)) {
+          logger.warn(
+            "Playlist dinâmica (Mix/Rádio) detectada — o total de faixas pode ser maior que o exibido inicialmente."
+          );
+        }
       }
 
       try {
@@ -195,10 +245,12 @@ ipcMain.handle("import-from-source", async (event, source, destRoot, customFolde
         );
         const entries = playlistInfo.entries;
         const total = entries.length;
+        grandTotal += total;
 
         if (playlistInfo.isPlaylist) {
           logger.info(`📋 Playlist "${playlistInfo.title}" — ${total} música(s).`);
         }
+        reportProgress();
 
         for (let i = 0; i < total; i++) {
           // Pausa entre músicas
@@ -209,7 +261,8 @@ ipcMain.handle("import-from-source", async (event, source, destRoot, customFolde
           }
 
           const entry = entries[i];
-          const indexStr = `${i + 1}/${total}`;
+          const itemNum = completedCount + failedCount + 1;
+          const indexStr = `${itemNum}/${grandTotal}`;
 
           sendStatus(`📥 Baixando ${indexStr}: ${entry.title}`);
           logger.info(`[${indexStr}] Baixando: ${entry.title}...`);
@@ -295,11 +348,13 @@ ipcMain.handle("import-from-source", async (event, source, destRoot, customFolde
               );
 
               allResults.push(result);
-              logger[result.success ? "success" : "error"](
-                result.success
-                  ? `[${indexStr}] ✔ Organizado: ${result.newPath}`
-                  : `[${indexStr}] ❌ Erro: ${result.errors.join(", ")}`
-              );
+              if (result.success) {
+                completedCount++;
+                logger.success(`[${indexStr}] ✔ Organizado: ${result.newPath}`);
+              } else {
+                failedCount++;
+                logger.error(`[${indexStr}] ❌ Erro: ${result.errors.join(", ")}`);
+              }
 
               if (item.filePath && await fs.pathExists(item.filePath)) {
                 await fs.remove(item.filePath).catch(() => {});
@@ -307,19 +362,23 @@ ipcMain.handle("import-from-source", async (event, source, destRoot, customFolde
               if (item.thumbnailPath && await fs.pathExists(item.thumbnailPath)) {
                 await fs.remove(item.thumbnailPath).catch(() => {});
               }
+            } else if (!processState.isCancelled) {
+              failedCount++;
+              const errMsg = "Download não retornou arquivo.";
+              logger.error(`[${indexStr}] ${errMsg}`);
+              allResults.push({ success: false, errors: [errMsg] });
             }
           } catch (downloadErr) {
             if (downloadErr.name === "AbortError" || processState.isCancelled) {
               // Cancelamento limpo — não logar como erro de download
               break;
             }
+            failedCount++;
             logger.error(`[${indexStr}] Erro: ${downloadErr.message}`);
             allResults.push({ success: false, errors: [downloadErr.message] });
           }
 
-          const globalProgress =
-            ((lineIdx / lines.length) + ((i + 1) / total / lines.length)) * 100;
-          send("progress", Math.round(globalProgress));
+          reportProgress();
         }
       } catch (lineErr) {
         if (lineErr.name === "AbortError" || processState.isCancelled) {
@@ -333,8 +392,26 @@ ipcMain.handle("import-from-source", async (event, source, destRoot, customFolde
       if (processState.isCancelled) break;
     }
 
-    send("progress", processState.isCancelled ? null : 100);
-    sendStatus(processState.isCancelled ? "✕ Cancelado pelo usuário." : "✅ Finalizado!");
+    if (processState.isCancelled) {
+      sendProgress({
+        percent: grandTotal > 0 ? Math.round(((completedCount + failedCount) / grandTotal) * 100) : 0,
+        completed: completedCount,
+        total: grandTotal,
+        failed: failedCount,
+      });
+    } else {
+      sendProgress({
+        percent: 100,
+        completed: completedCount,
+        total: grandTotal,
+        failed: failedCount,
+      });
+    }
+    sendStatus(
+      processState.isCancelled
+        ? `✕ Cancelado — ${completedCount}/${grandTotal} concluído(s).`
+        : `✅ Finalizado — ${completedCount}/${grandTotal} concluído(s)${failedCount ? `, ${failedCount} falha(s)` : ""}.`
+    );
     return allResults;
   } catch (err) {
     if (err.name !== "AbortError") {

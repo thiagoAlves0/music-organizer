@@ -2,6 +2,7 @@ const path = require("path");
 const fs = require("fs-extra");
 const Tagger = require("./tagger");
 const CoverDownloader = require("./cover");
+const { extractArtistAndTitle, cleanTagText } = require("./utils");
 
 class Organizer {
   static async organize(filePath, destRoot, fallbackMetadata = {}, thumbnailPath = null, customFolder = '') {
@@ -26,23 +27,11 @@ class Organizer {
 
       // Extrair artista do título
       if (!tags.artist && tags.title) {
-        const patterns = [
-          /^(.+?)\s*[-–—]\s*(.+)$/,
-          /^(.+?)\s*:\s*(.+)$/,
-          /^(.+?)\s*\|\s*(.+)$/,
-          /^(.+?)\s*\/\s*(.+)$/,
-          /^(.+?)\s*['"](.+)['"]\s*$/,
-          /^(.+?)\s*\(\s*(.+)\s*\)$/
-        ];
-
-        for (const pattern of patterns) {
-          const match = tags.title.match(pattern);
-          if (match && match[1] && match[2]) {
-            tags.artist = match[1].trim();
-            tags.title = match[2].trim();
-            console.log(`🔍 Artista extraído do título: "${tags.artist}"`);
-            break;
-          }
+        const parsed = extractArtistAndTitle(tags.title);
+        if (parsed.artist) {
+          tags.artist = parsed.artist;
+          tags.title = parsed.track;
+          console.log(`🔍 Artista extraído do título: "${tags.artist}"`);
         }
       }
 
@@ -53,10 +42,10 @@ class Organizer {
 
       // Limpar sujeiras
       if (tags.title) {
-        tags.title = tags.title.replace(/\[.*?\]|\(.*?\)/g, "").replace(/(oficial|official|video|clipe|lyric|audio|hq|hd|4k)/gi, "").replace(/\s+/g, " ").trim();
+        tags.title = cleanTagText(tags.title, "title");
       }
       if (tags.artist) {
-        tags.artist = tags.artist.replace(/\[.*?\]|\(.*?\)/g, "").replace(/(topic|- topic|oficial|official|vevo)/gi, "").replace(/\s+/g, " ").trim();
+        tags.artist = cleanTagText(tags.artist, "artist");
       }
 
       // Extrair do nome do arquivo

@@ -1,13 +1,15 @@
 const { spawn } = require('child_process');
 const fs = require('fs-extra');
 const path = require('path');
+const { extractArtistAndTitle } = require('./utils');
 
 class Downloader {
   /**
-   * Detecta se a URL é de uma playlist ou de um vídeo único.
-   * - Playlist: preserva a URL inteira
-   * - Vídeo único dentro de playlist (watch?v=...&list=...): remove o &list para não baixar a playlist toda
-   * - Vídeo simples: preserva normalmente
+   * Detecta e normaliza URLs do YouTube.
+   * - URL de playlist (/playlist?list=...) → preserva a playlist
+   * - Vídeo com &list= → baixa a playlist inteira (não só o vídeo)
+   * - Vídeo simples → watch?v=ID ou youtu.be/ID
+   * - Texto sem URL → ytsearch1:
    */
   static cleanUrl(url) {
     const trimmed = url.trim();
@@ -54,6 +56,22 @@ class Downloader {
 
   static isPlaylist(url) {
     return /youtube\.com\/playlist\?list=/.test(url);
+  }
+
+  /**
+   * Detecta URLs de playlist dinâmica (Mix/Rádio do YouTube).
+   * Essas URLs podem gerar mais faixas do que o snapshot inicial indica.
+   */
+  static isDynamicPlaylistUrl(url) {
+    const trimmed = url.trim();
+    if (/[?&]start_radio=1/i.test(trimmed)) return true;
+    const listMatch = trimmed.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+    if (listMatch && /^RD/i.test(listMatch[1])) return true;
+    return false;
+  }
+
+  static extractArtistAndTitle(title) {
+    return extractArtistAndTitle(title);
   }
 
   static async getYtdlpPath() {
@@ -432,26 +450,6 @@ class Downloader {
     });
 
     return results;
-  }
-
-  static extractArtistAndTitle(title) {
-    // Remove sujeiras comuns (parênteses, colchetes, palavras-chave)
-    const clean = title
-      .replace(/\[.*?\]|\(.*?\)/g, "")
-      .replace(/(oficial|official|video|clipe|lyric|audio|hq|hd|4k|remaster|remix|ao vivo|live|dvd|vol|parte)/gi, "")
-      .trim();
-    
-    // Tenta extrair "Artista - Música"
-    const match = clean.match(/^(.+?)\s*[-–]\s*(.+)$/);
-    if (match && match[1] && match[2]) {
-      return { 
-        artist: match[1].trim().replace(/\s+/g, ' '), 
-        track: match[2].trim().replace(/\s+/g, ' ')
-      };
-    }
-    
-    // Se não encontrar, usa o título inteiro como música
-    return { artist: "", track: clean };
   }
 }
 

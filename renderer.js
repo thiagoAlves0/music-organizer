@@ -3,6 +3,7 @@ const {
   selectFiles,
   organizeFiles,
   importFromSource,
+  checkDynamicPlaylists,
   getAvailableFormats,
   onLog,
   onProgress,
@@ -34,9 +35,14 @@ const qualityDetecting  = document.getElementById("qualityDetecting");
 const customFolderInput = document.getElementById("customFolderInput");
 const clearFolderBtn    = document.getElementById("clearFolderBtn");
 const clearLogBtn       = document.getElementById("clearLogBtn");
+const organizeBtn       = document.getElementById("organizeBtn");
+const renumberBtn       = document.getElementById("renumberBtn");
+const pickDestBtn       = document.getElementById("pickDestBtn");
+const pickFilesBtn      = document.getElementById("pickFilesBtn");
 
 let selectedFilePaths = [];
 let destRoot = null;
+let isProcessing = false;
 
 // ── Helpers de visibilidade ───────────────────────────────────────────────────
 const show = (el) => el.classList.remove("hidden");
@@ -203,8 +209,8 @@ function updateSourceState() {
     hide(urlPreviewEl);
   }
 
-  // Habilita/desabilita botão
-  importBtn.disabled = count === 0;
+  // Habilita/desabilita botão (respeita estado de processamento)
+  importBtn.disabled = count === 0 || isProcessing;
 
   // Esconde erro de campo vazio ao digitar
   if (count > 0) hide(sourceErrorEl);
@@ -244,6 +250,8 @@ function appendLog(msg) {
   p.textContent = msg;
   if (msg.startsWith("✔") || msg.startsWith("✅") || msg.includes("Organizado")) {
     p.className = "log-success";
+  } else if (msg.startsWith("⚠")) {
+    p.className = "log-warn";
   } else if (msg.startsWith("❌") || msg.toLowerCase().includes("erro") || msg.toLowerCase().includes("falha")) {
     p.className = "log-error";
   } else {
@@ -255,8 +263,36 @@ function appendLog(msg) {
 
 function setProgress(value) {
   if (value === null || value === undefined) return;
+
+  if (typeof value === "object") {
+    const percent = value.percent ?? 0;
+    progressBar.value = percent;
+    const parts = [];
+    if (value.total != null && value.completed != null) {
+      parts.push(`${value.completed}/${value.total}`);
+    }
+    if (value.failed > 0) parts.push(`${value.failed} falha(s)`);
+    progressText.textContent = parts.length
+      ? `${parts.join(" · ")} (${Math.round(percent)}%)`
+      : `${Math.round(percent)}%`;
+    return;
+  }
+
   progressBar.value = value;
   progressText.textContent = `${Math.round(value)}%`;
+}
+
+function setProcessing(active) {
+  isProcessing = active;
+  organizeBtn.disabled = active;
+  renumberBtn.disabled = active;
+  pickDestBtn.disabled = active;
+  pickFilesBtn.disabled = active;
+  if (active) {
+    importBtn.disabled = true;
+  } else {
+    updateSourceState();
+  }
 }
 
 // ── Controles de processo ─────────────────────────────────────────────────────
@@ -312,6 +348,7 @@ onLog((msg) => appendLog(msg));
 onProgress((value) => setProgress(value));
 
 document.getElementById("pickFilesBtn").addEventListener("click", async () => {
+  if (isProcessing) return;
   const files = await selectFiles();
   if (files && files.length > 0) {
     selectedFilePaths = files;
@@ -320,6 +357,7 @@ document.getElementById("pickFilesBtn").addEventListener("click", async () => {
 });
 
 document.getElementById("pickDestBtn").addEventListener("click", async () => {
+  if (isProcessing) return;
   const folder = await selectFolder();
   if (folder) {
     destRoot = folder;
@@ -331,25 +369,34 @@ document.getElementById("pickDestBtn").addEventListener("click", async () => {
 });
 
 document.getElementById("organizeBtn").addEventListener("click", async () => {
+  if (isProcessing) return;
   if (selectedFilePaths.length === 0) return alert("Selecione ao menos um arquivo de áudio.");
   if (!destRoot) return alert("Selecione a pasta de destino.");
 
   setProgress(0);
+  setProcessing(true);
   showProcessControls();
   appendLog("⏳ Organizando biblioteca...");
 
   try {
     const results = await organizeFiles(selectedFilePaths, destRoot);
     const successCount = results.filter((r) => r.success).length;
-    appendLog(`✅ Concluído: ${successCount}/${results.length} arquivo(s) organizado(s).`);
+    const failedCount = results.length - successCount;
+    appendLog(
+      failedCount
+        ? `✅ Concluído: ${successCount}/${results.length} organizado(s), ${failedCount} falha(s).`
+        : `✅ Concluído: ${successCount}/${results.length} arquivo(s) organizado(s).`
+    );
   } catch (err) {
     appendLog(`❌ Falha: ${err.message}`);
   } finally {
+    setProcessing(false);
     hideProcessControls();
   }
 });
 
 importBtn.addEventListener("click", async () => {
+  if (isProcessing) return;
   const source = sourceInput.value.trim();
   const customFolder = customFolderInput.value.trim();
 
@@ -364,6 +411,21 @@ importBtn.addEventListener("click", async () => {
     return;
   }
 
+  // Aviso para playlists dinâmicas (Mix/Rádio)
+  try {
+    const dynamicUrls = await checkDynamicPlaylists(source);
+    if (dynamicUrls.length > 0) {
+      const proceed = confirm(
+        `⚠️ Playlist dinâmica (Mix/Rádio) detectada em ${dynamicUrls.length} URL(s).\n\n` +
+        "O YouTube pode incluir mais músicas do que o total inicial exibido.\n\nDeseja continuar?"
+      );
+      if (!proceed) return;
+      appendLog("⚠ Playlist dinâmica detectada — o total de faixas pode aumentar durante o download.");
+    }
+  } catch (_) {
+    // Falha na verificação não bloqueia o import
+  }
+
   hide(sourceErrorEl);
   hide(destErrorEl);
 
@@ -374,30 +436,40 @@ importBtn.addEventListener("click", async () => {
     : `${quality}p`;
 
   setProgress(0);
+  setProcessing(true);
   showProcessControls();
   appendLog(`⏳ Importando (${format.toUpperCase()} · ${qualityLabel})...`);
 
   try {
     const results = await importFromSource(source, destRoot, customFolder, { format, quality });
     const successCount = results.filter((r) => r.success).length;
-    appendLog(`✅ Concluído: ${successCount}/${results.length} arquivo(s) organizado(s).`);
+    const failedCount = results.length - successCount;
+    appendLog(
+      failedCount
+        ? `✅ Concluído: ${successCount}/${results.length} organizado(s), ${failedCount} falha(s).`
+        : `✅ Concluído: ${successCount}/${results.length} arquivo(s) organizado(s).`
+    );
 
-    // Limpa o campo de URL e preview após sucesso
-    sourceInput.value = "";
-    hide(urlPreviewEl);
-    hide(lineCounterEl);
-    importBtn.disabled = true;
+    // Limpa o campo apenas se tudo foi concluído com sucesso
+    if (results.length > 0 && successCount === results.length) {
+      sourceInput.value = "";
+      hide(urlPreviewEl);
+      hide(lineCounterEl);
+    }
+    updateSourceState();
   } catch (err) {
     if (!err.message?.includes("cancelad") && !err.name?.includes("Abort")) {
       appendLog(`❌ ${err.message}`);
     }
   } finally {
+    setProcessing(false);
     hideProcessControls();
   }
 });
 
 // ── Renumerar pasta ───────────────────────────────────────────────────────────
 document.getElementById("renumberBtn").addEventListener("click", async () => {
+  if (isProcessing) return;
   const folderPath = await selectFolder();
   if (!folderPath) return;
 

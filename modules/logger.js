@@ -8,6 +8,9 @@ class Logger {
   success(msg) {
     this.emit(`✔ ${msg}`);
   }
+  warn(msg) {
+    this.emit(`⚠ ${msg}`);
+  }
   error(msg) {
     this.emit(`❌ ${msg}`);
   }

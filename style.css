@@ -391,6 +391,7 @@ progress::-moz-progress-bar      { background: var(--accent);    border-radius: 
 #logArea p { margin: 0; color: var(--text-dim); }
 #logArea p.log-success { color: var(--green); }
 #logArea p.log-error   { color: var(--red); }
+#logArea p.log-warn    { color: #f0a050; }
 #logArea p.log-info    { color: var(--text); }
 
 /* ---- Controles de Processo ---- */
